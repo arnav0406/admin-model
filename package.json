@@ -1,0 +1,25 @@
+{
+  "name": "eo-doc-cms",
+  "version": "1.0.0",
+  "description": "e-Office Document Management CMS — Admin Interface",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "server": "nodemon server.js",
+    "dev": "npm run server & npm run dev --prefix client",
+    "setup": "node -e \"require('fs').readFileSync('setup.sql','utf8').split(';').filter(s=>s.trim()).forEach(s=>{require('./db').query(s).catch(console.error)})\"",
+    "seed": "node seed-admin.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
