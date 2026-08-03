@@ -1,10 +1,17 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 
 export default function FilterBar({ filters, onChange }) {
     const searchRef = useRef(null)
+    // Local search state for instant typing feel (debounce happens in parent via useDebounce)
+    const [localSearch, setLocalSearch] = useState(filters.search || '')
 
     // Auto-focus search on mount
     useEffect(() => { searchRef.current?.focus() }, [])
+
+    // Sync inbound filter changes (e.g. clear filters button)
+    useEffect(() => {
+        setLocalSearch(filters.search || '')
+    }, [filters.search])
 
     const set = (key, value) => onChange({ ...filters, [key]: value, page: 1 })
 
@@ -16,8 +23,11 @@ export default function FilterBar({ filters, onChange }) {
                 type="search"
                 className="search-input filter-bar-search"
                 placeholder="Search title or description…"
-                value={filters.search || ''}
-                onChange={e => set('search', e.target.value)}
+                value={localSearch}
+                onChange={e => {
+                    setLocalSearch(e.target.value)
+                    set('search', e.target.value)
+                }}
             />
             <select
                 id="filter-status"
@@ -41,31 +51,14 @@ export default function FilterBar({ filters, onChange }) {
                 <option value="application/pdf">PDF</option>
                 <option value="image/">Images</option>
             </select>
-            <select
-                id="filter-sort"
-                className="filter-select"
-                value={filters.sort || 'uploaded_at'}
-                onChange={e => set('sort', e.target.value)}
-            >
-                <option value="uploaded_at">Sort: Date</option>
-                <option value="title">Sort: Title</option>
-                <option value="file_size">Sort: Size</option>
-                <option value="status">Sort: Status</option>
-            </select>
-            <select
-                id="filter-order"
-                className="filter-select"
-                value={filters.order || 'desc'}
-                onChange={e => set('order', e.target.value)}
-            >
-                <option value="desc">Newest First</option>
-                <option value="asc">Oldest First</option>
-            </select>
             {(filters.search || filters.status || filters.mime_type) && (
                 <button
                     id="clear-filters-btn"
                     className="btn btn-ghost"
-                    onClick={() => onChange({ search: '', status: '', mime_type: '', sort: 'uploaded_at', order: 'desc', page: 1 })}
+                    onClick={() => {
+                        setLocalSearch('')
+                        onChange({ search: '', status: '', mime_type: '', sort: filters.sort || 'uploaded_at', order: filters.order || 'desc', page: 1 })
+                    }}
                 >
                     Clear
                 </button>

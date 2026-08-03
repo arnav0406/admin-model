@@ -161,6 +161,80 @@ const bulkDelete = async (req, res) => {
     }
 };
 
+const bulkUpdateStatus = async (req, res) => {
+    try {
+        const { ids, status } = req.body;
+        const validStatuses = ['pending', 'approved', 'rejected', 'archived'];
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'ids must be a non-empty array.' });
+        }
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ error: `Status must be one of: ${validStatuses.join(', ')}` });
+        }
+
+        const updated = await documentModel.bulkUpdateDocumentStatus(ids, status, req.adminId);
+
+        await documentModel.createAuditLog({
+            actorType: 'admin',
+            actorId: req.adminId,
+            action: `document_bulk_${status}`,
+            details: `Bulk marked ${updated.length} document(s) as ${status}`,
+            ipAddress: req.ip
+        });
+
+        res.json({ message: `${updated.length} document(s) updated.`, updated });
+    } catch (err) {
+        console.error('Bulk status update error:', err.message);
+        res.status(500).json({ error: 'Failed to bulk update document status.' });
+    }
+};
+
+const exportDocuments = async (req, res) => {
+    try {
+        const { search = '', status = '', category = '', owner_id = '', mime_type = '', from = '', to = '' } = req.query;
+        const docs = await documentModel.getAllDocumentsFlat({ search, status, category, owner_id, mime_type, from, to });
+
+        const escape = (v) => {
+            if (v == null) return '';
+            const s = String(v);
+            if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+            return s;
+        };
+
+        const headers = ['ID', 'Title', 'Description', 'Category', 'Status', 'File Name', 'File Size (bytes)', 'MIME Type', 'Owner Name', 'Owner Email', 'Reviewer', 'Uploaded At', 'Review Note'];
+        const rows = docs.map(d => [
+            d.id, d.title, d.description, d.category, d.status, d.file_name, d.file_size,
+            d.mime_type, d.owner_name, d.owner_email, d.reviewer_name,
+            d.uploaded_at ? new Date(d.uploaded_at).toISOString() : '',
+            d.review_note
+        ].map(escape).join(','));
+
+        const csv = [headers.join(','), ...rows].join('\n');
+        const filename = `documents-export-${new Date().toISOString().slice(0, 10)}.csv`;
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+    } catch (err) {
+        console.error('Export error:', err.message);
+        res.status(500).json({ error: 'Failed to export documents.' });
+    }
+};
+
+const getAuditLog = async (req, res) => {
+    try {
+        const { page = '1', limit = '30', action = '' } = req.query;
+        const parsedPage = Math.max(Number(page) || 1, 1);
+        const parsedLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+        const data = await documentModel.getAuditLogs({ page: parsedPage, limit: parsedLimit, action });
+        res.json(data);
+    } catch (err) {
+        console.error('Audit log error:', err.message);
+        res.status(500).json({ error: 'Failed to fetch audit log.' });
+    }
+};
+
 const downloadDocument = async (req, res) => {
     try {
         const { id } = req.params;
@@ -229,7 +303,10 @@ module.exports = {
     updateStatus,
     deleteDocument,
     bulkDelete,
+    bulkUpdateStatus,
+    exportDocuments,
     downloadDocument,
     listUsers,
-    getUserProfile
+    getUserProfile,
+    getAuditLog
 };

@@ -3,13 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import StatusBadge from './StatusBadge'
 import FilterBar from './FilterBar'
 import DocumentDetail from './DocumentDetail'
+import apiFetch, { buildUrl } from '../lib/api'
+import { useToast } from '../context/ToastContext'
+import { useDebounce } from '../hooks/useDebounce'
 
 const API = import.meta.env.VITE_API_URL || ''
-
-function getCsrf() {
-    const m = document.cookie.match(/(?:^|;\s*)admin_csrf_token=([^;]*)/)
-    return m ? m[1] : ''
-}
 
 function fmtSize(bytes) {
     if (!bytes) return '—'
@@ -30,9 +28,52 @@ function MimeBadge({ mime }) {
     return <span className="mime-badge mime-other">FILE</span>
 }
 
+// Sort arrow icon
+function SortIcon({ active, order }) {
+    return (
+        <span className={`sort-icon ${active && order === 'asc' ? 'asc' : ''}`}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+            </svg>
+        </span>
+    )
+}
+
+// Pagination pills
+function PaginationPills({ page, totalPages, onChange }) {
+    const pages = []
+    const range = 2
+    const start = Math.max(1, page - range)
+    const end = Math.min(totalPages, page + range)
+    for (let p = start; p <= end; p++) pages.push(p)
+
+    return (
+        <div className="pagination-pills">
+            <button className="pagination-pill" disabled={page <= 1} onClick={() => onChange(page - 1)}>←</button>
+            {start > 1 && <><button className="pagination-pill" onClick={() => onChange(1)}>1</button>{start > 2 && <span style={{ padding: '0 4px', color: 'var(--muted)' }}>…</span>}</>}
+            {pages.map(p => (
+                <button key={p} className={`pagination-pill ${p === page ? 'active' : ''}`} onClick={() => onChange(p)}>{p}</button>
+            ))}
+            {end < totalPages && <>{end < totalPages - 1 && <span style={{ padding: '0 4px', color: 'var(--muted)' }}>…</span>}<button className="pagination-pill" onClick={() => onChange(totalPages)}>{totalPages}</button></>}
+            <button className="pagination-pill" disabled={page >= totalPages} onClick={() => onChange(page + 1)}>→</button>
+        </div>
+    )
+}
+
+const SORTABLE_COLS = [
+    { key: 'title',       label: 'Title' },
+    { key: '',            label: 'Owner' },
+    { key: '',            label: 'Type' },
+    { key: 'file_size',   label: 'Size' },
+    { key: 'status',      label: 'Status' },
+    { key: 'uploaded_at', label: 'Uploaded' },
+    { key: '',            label: 'Actions' },
+]
+
 export default function DocumentsTable() {
     const [searchParams, setSearchParams] = useSearchParams()
     const navigate = useNavigate()
+    const addToast = useToast()
 
     const [filters, setFilters] = useState({
         search: searchParams.get('search') || '',
@@ -49,24 +90,21 @@ export default function DocumentsTable() {
     const [selectedIds, setSelectedIds] = useState(new Set())
     const [activeDocId, setActiveDocId] = useState(null)
     const [bulkDeleting, setBulkDeleting] = useState(false)
+    const [bulkUpdating, setBulkUpdating] = useState(false)
 
+    const debouncedSearch = useDebounce(filters.search, 350)
     const limit = 20
 
     const fetchDocs = useCallback(() => {
         setLoading(true)
-        const params = new URLSearchParams()
-        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v) })
-        params.set('limit', limit)
-
-        fetch(`${API}/api/admin/documents?${params}`, { credentials: 'include' })
-            .then(r => r.json())
+        apiFetch(buildUrl('/api/admin/documents', { ...filters, search: debouncedSearch, limit }))
             .then(data => {
                 setDocs(data.documents || [])
                 setTotal(data.total || 0)
                 setLoading(false)
             })
             .catch(() => setLoading(false))
-    }, [filters])
+    }, [filters, debouncedSearch])
 
     useEffect(() => { fetchDocs() }, [fetchDocs])
 
@@ -79,7 +117,8 @@ export default function DocumentsTable() {
 
     const totalPages = Math.ceil(total / limit)
 
-    const toggleSelect = (id) => {
+    const toggleSelect = (id, e) => {
+        e.stopPropagation()
         setSelectedIds(prev => {
             const next = new Set(prev)
             next.has(id) ? next.delete(id) : next.add(id)
@@ -87,24 +126,66 @@ export default function DocumentsTable() {
         })
     }
 
-    const toggleAll = () => {
+    const toggleAll = (e) => {
+        e.stopPropagation()
         setSelectedIds(prev =>
             prev.size === docs.length ? new Set() : new Set(docs.map(d => d.id))
         )
     }
 
+    const handleSort = (col) => {
+        if (!col) return
+        setFilters(f => ({
+            ...f,
+            sort: col,
+            order: f.sort === col && f.order === 'desc' ? 'asc' : 'desc',
+            page: 1,
+        }))
+    }
+
     const handleBulkDelete = async () => {
         if (!confirm(`Delete ${selectedIds.size} document(s)? This cannot be undone.`)) return
         setBulkDeleting(true)
-        await fetch(`${API}/api/admin/documents/bulk`, {
-            method: 'DELETE',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json', 'x-csrf-token': getCsrf() },
-            body: JSON.stringify({ ids: [...selectedIds] })
-        })
-        setSelectedIds(new Set())
-        fetchDocs()
+        try {
+            await apiFetch('/api/admin/documents/bulk', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [...selectedIds] })
+            })
+            addToast(`Deleted ${selectedIds.size} document(s)`, 'success')
+            setSelectedIds(new Set())
+            fetchDocs()
+        } catch (err) {
+            addToast(err.message || 'Bulk delete failed', 'error')
+        }
         setBulkDeleting(false)
+    }
+
+    const handleBulkStatus = async (status) => {
+        const label = status.charAt(0).toUpperCase() + status.slice(1)
+        if (!confirm(`Mark ${selectedIds.size} document(s) as ${label}?`)) return
+        setBulkUpdating(true)
+        try {
+            await apiFetch('/api/admin/documents/bulk-status', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [...selectedIds], status })
+            })
+            addToast(`${selectedIds.size} document(s) marked as ${label}`, 'success')
+            setSelectedIds(new Set())
+            fetchDocs()
+        } catch (err) {
+            addToast(err.message || 'Bulk update failed', 'error')
+        }
+        setBulkUpdating(false)
+    }
+
+    const handleExport = () => {
+        const params = new URLSearchParams()
+        if (filters.search) params.set('search', filters.search)
+        if (filters.status) params.set('status', filters.status)
+        if (filters.mime_type) params.set('mime_type', filters.mime_type)
+        window.open(`${API}/api/admin/documents/export?${params}`, '_blank')
     }
 
     const handleStatusChange = (updated) => {
@@ -116,16 +197,21 @@ export default function DocumentsTable() {
         setTotal(t => t - 1)
     }
 
-    const handleUserClick = (ownerId) => {
-        navigate(`/users/${ownerId}`)
-    }
-
     return (
         <div>
             <div className="page-header">
                 <div>
                     <h1>Documents</h1>
                     <p className="page-subtitle">{total} document{total !== 1 ? 's' : ''} total</p>
+                </div>
+                <div className="page-controls">
+                    <button id="export-btn" className="btn btn-ghost" onClick={handleExport}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Export CSV
+                    </button>
                 </div>
             </div>
 
@@ -135,10 +221,27 @@ export default function DocumentsTable() {
                 <div className="bulk-action-bar">
                     <span className="bulk-count">{selectedIds.size} selected</span>
                     <button
+                        className="btn btn-success"
+                        onClick={() => handleBulkStatus('approved')}
+                        disabled={bulkUpdating || bulkDeleting}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        Approve
+                    </button>
+                    <button
+                        className="btn btn-danger"
+                        onClick={() => handleBulkStatus('rejected')}
+                        disabled={bulkUpdating || bulkDeleting}
+                    >
+                        Reject
+                    </button>
+                    <button
                         id="bulk-delete-btn"
                         className="btn btn-danger"
                         onClick={handleBulkDelete}
-                        disabled={bulkDeleting}
+                        disabled={bulkDeleting || bulkUpdating}
                     >
                         {bulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size}`}
                     </button>
@@ -170,7 +273,7 @@ export default function DocumentsTable() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th className="cell-check">
+                                <th className="cell-check" onClick={e => e.stopPropagation()}>
                                     <input
                                         type="checkbox"
                                         checked={selectedIds.size === docs.length && docs.length > 0}
@@ -178,13 +281,16 @@ export default function DocumentsTable() {
                                         id="select-all-checkbox"
                                     />
                                 </th>
-                                <th>Title</th>
-                                <th>Owner</th>
-                                <th>Type</th>
-                                <th>Size</th>
-                                <th>Status</th>
-                                <th>Uploaded</th>
-                                <th className="cell-actions">Actions</th>
+                                {SORTABLE_COLS.map(col => (
+                                    <th
+                                        key={col.label}
+                                        className={`${col.key ? 'sortable' : ''} ${filters.sort === col.key && col.key ? 'sort-active' : ''}`}
+                                        onClick={() => handleSort(col.key)}
+                                    >
+                                        {col.label}
+                                        {col.key && <SortIcon active={filters.sort === col.key} order={filters.order} />}
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
@@ -192,24 +298,19 @@ export default function DocumentsTable() {
                                 <tr
                                     key={doc.id}
                                     className={selectedIds.has(doc.id) ? 'selected-row' : ''}
+                                    onClick={() => setActiveDocId(doc.id)}
                                 >
-                                    <td className="cell-check">
+                                    <td className="cell-check" onClick={e => toggleSelect(doc.id, e)}>
                                         <input
                                             type="checkbox"
                                             checked={selectedIds.has(doc.id)}
-                                            onChange={() => toggleSelect(doc.id)}
+                                            onChange={() => {}}
                                             id={`check-${doc.id}`}
                                         />
                                     </td>
                                     <td className="cell-title">
-                                        <span
-                                            className="doc-row-link cell-name"
-                                            onClick={() => setActiveDocId(doc.id)}
-                                            style={{ cursor: 'pointer' }}
-                                        >
-                                            {doc.title}
-                                        </span>
-                    </td>
+                                        <span className="doc-row-link cell-name">{doc.title}</span>
+                                    </td>
                                     <td>
                                         <div className="cell-owner">{doc.owner_name || '—'}</div>
                                         <div className="cell-email">{doc.owner_email}</div>
@@ -218,7 +319,7 @@ export default function DocumentsTable() {
                                     <td className="cell-size">{fmtSize(doc.file_size)}</td>
                                     <td><StatusBadge status={doc.status} /></td>
                                     <td className="cell-date">{fmtDate(doc.uploaded_at)}</td>
-                                    <td className="cell-actions">
+                                    <td className="cell-actions" onClick={e => e.stopPropagation()}>
                                         <button
                                             id={`view-doc-${doc.id}`}
                                             className="btn btn-ghost"
@@ -241,30 +342,21 @@ export default function DocumentsTable() {
                     <span className="pagination-info">
                         Showing {((filters.page - 1) * limit) + 1}–{Math.min(filters.page * limit, total)} of {total}
                     </span>
-                    <div className="pagination-controls">
-                        <button
-                            disabled={filters.page <= 1}
-                            onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}
-                            id="prev-page-btn"
-                        >← Prev</button>
-                        <span>{filters.page} / {totalPages}</span>
-                        <button
-                            disabled={filters.page >= totalPages}
-                            onClick={() => setFilters(f => ({ ...f, page: f.page + 1 }))}
-                            id="next-page-btn"
-                        >Next →</button>
-                    </div>
+                    <PaginationPills
+                        page={filters.page}
+                        totalPages={totalPages}
+                        onChange={p => setFilters(f => ({ ...f, page: p }))}
+                    />
                 </div>
             )}
 
-            {/* Slide-over */}
             {activeDocId && (
                 <DocumentDetail
                     docId={activeDocId}
                     onClose={() => setActiveDocId(null)}
                     onStatusChange={handleStatusChange}
                     onDelete={handleDelete}
-                    onUserClick={handleUserClick}
+                    onUserClick={(ownerId) => navigate(`/users/${ownerId}`)}
                 />
             )}
         </div>

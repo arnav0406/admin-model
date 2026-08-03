@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import StatusBadge from './StatusBadge'
-
-const API = import.meta.env.VITE_API_URL || ''
+import apiFetch from '../lib/api'
+import { useDebounce } from '../hooks/useDebounce'
 
 function fmtDate(d) {
     if (!d) return '—'
@@ -10,31 +10,40 @@ function fmtDate(d) {
 }
 
 export default function UsersTable() {
+    const [searchParams, setSearchParams] = useSearchParams()
     const [users, setUsers] = useState([])
     const [total, setTotal] = useState(0)
-    const [search, setSearch] = useState('')
-    const [page, setPage] = useState(1)
+    const [search, setSearch] = useState(searchParams.get('search') || '')
+    const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
     const [loading, setLoading] = useState(true)
     const navigate = useNavigate()
     const limit = 20
 
+    const debouncedSearch = useDebounce(search, 350)
+
+    // Sync to URL
+    useEffect(() => {
+        const params = {}
+        if (debouncedSearch) params.search = debouncedSearch
+        if (page > 1) params.page = page
+        setSearchParams(params, { replace: true })
+    }, [debouncedSearch, page, setSearchParams])
+
     useEffect(() => {
         setLoading(true)
         const params = new URLSearchParams({ page, limit })
-        if (search) params.set('search', search)
-
-        fetch(`${API}/api/admin/users?${params}`, { credentials: 'include' })
-            .then(r => r.json())
+        if (debouncedSearch) params.set('search', debouncedSearch)
+        apiFetch(`/api/admin/users?${params}`)
             .then(data => {
                 setUsers(data.users || [])
                 setTotal(data.total || 0)
                 setLoading(false)
             })
             .catch(() => setLoading(false))
-    }, [search, page])
+    }, [debouncedSearch, page])
 
-    // Debounced search reset page
-    useEffect(() => { setPage(1) }, [search])
+    // Reset page on search change
+    useEffect(() => { setPage(1) }, [debouncedSearch])
 
     const totalPages = Math.ceil(total / limit)
 
@@ -79,7 +88,7 @@ export default function UsersTable() {
                         </thead>
                         <tbody>
                             {users.map(user => (
-                                <tr key={user.id}>
+                                <tr key={user.id} onClick={() => navigate(`/users/${user.id}`)}>
                                     <td>
                                         <span className="cell-name">{user.display_name}</span>
                                     </td>
@@ -90,13 +99,11 @@ export default function UsersTable() {
                                         </span>
                                     </td>
                                     <td>
-                                        <span className="count-badge">
-                                            {user.doc_count}
-                                        </span>
+                                        <span className="count-badge">{user.doc_count}</span>
                                     </td>
                                     <td><StatusBadge status={user.is_active} type="account" /></td>
                                     <td className="cell-date">{fmtDate(user.created_at)}</td>
-                                    <td className="cell-actions">
+                                    <td className="cell-actions" onClick={e => e.stopPropagation()}>
                                         <button
                                             id={`view-user-${user.id}`}
                                             className="btn btn-ghost"

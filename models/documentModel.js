@@ -183,6 +183,74 @@ const bulkDeleteDocuments = async (ids) => {
     return result.rows;
 };
 
+const bulkUpdateDocumentStatus = async (ids, status, reviewedBy) => {
+    const result = await pool.query(
+        `UPDATE documents
+         SET status = $1, reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
+         WHERE id = ANY($3::uuid[])
+         RETURNING *`,
+        [status, reviewedBy, ids]
+    );
+    return result.rows;
+};
+
+const getAllDocumentsFlat = async ({ search, status, category, owner_id, mime_type, from, to }) => {
+    const params = [];
+    const conditions = [];
+
+    if (search) {
+        params.push(search);
+        conditions.push(`d.search_vector @@ plainto_tsquery('english', $${params.length})`);
+    }
+    if (status) { params.push(status); conditions.push(`d.status = $${params.length}`); }
+    if (category) { params.push(category); conditions.push(`d.category = $${params.length}`); }
+    if (owner_id) { params.push(parseInt(owner_id)); conditions.push(`d.owner_id = $${params.length}`); }
+    if (mime_type) { params.push(`${mime_type}%`); conditions.push(`d.mime_type ILIKE $${params.length}`); }
+    if (from) { params.push(from); conditions.push(`d.uploaded_at >= $${params.length}`); }
+    if (to) { params.push(to); conditions.push(`d.uploaded_at <= $${params.length}`); }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await pool.query(
+        `SELECT d.id, d.title, d.description, d.category, d.status, d.file_name, d.file_size,
+                d.mime_type, d.uploaded_at, d.review_note,
+                a.email AS owner_email, a.display_name AS owner_name,
+                aa.display_name AS reviewer_name
+         FROM documents d
+         LEFT JOIN accounts a ON a.id = d.owner_id
+         LEFT JOIN admin_accounts aa ON aa.id = d.reviewed_by
+         ${where}
+         ORDER BY d.uploaded_at DESC
+         LIMIT 5000`,
+        params
+    );
+    return result.rows;
+};
+
+const getAuditLogs = async ({ page = 1, limit = 30, action = '' }) => {
+    const params = [];
+    let where = '';
+    if (action) {
+        params.push(action);
+        where = `WHERE al.action = $${params.length}`;
+    }
+    const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS count FROM audit_logs al ${where}`, params
+    );
+    const offset = (page - 1) * limit;
+    params.push(limit);
+    params.push(offset);
+    const result = await pool.query(
+        `SELECT al.*, aa.display_name AS admin_name
+         FROM audit_logs al
+         LEFT JOIN admin_accounts aa ON aa.id = al.actor_id AND al.actor_type = 'admin'
+         ${where}
+         ORDER BY al.created_at DESC
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params
+    );
+    return { logs: result.rows, total: countResult.rows[0].count, page, limit };
+};
+
 // ─── Users ───
 
 const getAllUsers = async ({ search, page, limit }) => {
@@ -267,10 +335,13 @@ module.exports = {
     getCategoryBreakdown,
     getRecentActivity,
     getAllDocuments,
+    getAllDocumentsFlat,
     getDocumentById,
     updateDocumentStatus,
     deleteDocument,
     bulkDeleteDocuments,
+    bulkUpdateDocumentStatus,
     getAllUsers,
-    getUserProfile
+    getUserProfile,
+    getAuditLogs
 };

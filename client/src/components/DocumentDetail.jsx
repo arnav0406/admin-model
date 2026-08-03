@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react'
 import StatusBadge from './StatusBadge'
+import apiFetch from '../lib/api'
+import { useToast } from '../context/ToastContext'
 
 const API = import.meta.env.VITE_API_URL || ''
-
-function getCsrf() {
-    const m = document.cookie.match(/(?:^|;\s*)admin_csrf_token=([^;]*)/)
-    return m ? m[1] : ''
-}
 
 function fmtSize(bytes) {
     if (!bytes) return '—'
@@ -30,46 +27,83 @@ function MimeBadge({ mime }) {
     return <span className="mime-badge mime-other">{mime.split('/')[1]?.toUpperCase() || 'File'}</span>
 }
 
+// File preview
+function FilePreview({ doc }) {
+    if (!doc) return null
+    const previewUrl = `${API}/api/admin/documents/${doc.id}/download`
+
+    if (doc.mime_type?.startsWith('image/')) {
+        return (
+            <div className="doc-preview">
+                <span className="doc-preview-label">Preview</span>
+                <img src={previewUrl} alt={doc.title} />
+            </div>
+        )
+    }
+    if (doc.mime_type?.includes('pdf')) {
+        return (
+            <div className="doc-preview">
+                <span className="doc-preview-label">PDF Preview</span>
+                <iframe src={`${previewUrl}#toolbar=0`} title={doc.title} />
+            </div>
+        )
+    }
+    return null
+}
+
 export default function DocumentDetail({ docId, onClose, onStatusChange, onDelete, onUserClick }) {
     const [doc, setDoc] = useState(null)
     const [loading, setLoading] = useState(true)
     const [reviewNote, setReviewNote] = useState('')
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
+    const addToast = useToast()
 
     useEffect(() => {
         if (!docId) return
         setLoading(true)
         setError('')
-        fetch(`${API}/api/admin/documents/${docId}`, { credentials: 'include' })
-            .then(r => r.json())
+        apiFetch(`/api/admin/documents/${docId}`)
             .then(d => {
                 setDoc(d)
                 setReviewNote(d.review_note || '')
                 setLoading(false)
             })
-            .catch(() => { setError('Failed to load document.'); setLoading(false) })
+            .catch(err => { setError(err.message || 'Failed to load document.'); setLoading(false) })
     }, [docId])
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handler = (e) => {
+            if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return
+            if (e.key === 'Escape') { onClose(); return }
+            if (!doc || saving) return
+            if (e.key === 'a' || e.key === 'A') { if (doc.status !== 'approved') updateStatus('approved') }
+            if (e.key === 'r' || e.key === 'R') { if (doc.status !== 'rejected') updateStatus('rejected') }
+        }
+        document.addEventListener('keydown', handler)
+        return () => document.removeEventListener('keydown', handler)
+    }, [doc, saving, onClose])
 
     const updateStatus = async (status) => {
         setSaving(true)
         setError('')
+        // Optimistic update
+        const prev = doc
+        setDoc(d => ({ ...d, status }))
         try {
-            const res = await fetch(`${API}/api/admin/documents/${docId}/status`, {
+            const data = await apiFetch(`/api/admin/documents/${docId}/status`, {
                 method: 'PATCH',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-csrf-token': getCsrf()
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status, review_note: reviewNote })
             })
-            const data = await res.json()
-            if (!res.ok) { setError(data.error || 'Failed to update.'); setSaving(false); return }
-            setDoc(prev => ({ ...prev, ...data }))
+            setDoc(d => ({ ...d, ...data }))
             onStatusChange && onStatusChange(data)
-        } catch {
-            setError('Network error.')
+            addToast(`Document marked as ${status}`, 'success')
+        } catch (err) {
+            setDoc(prev) // revert optimistic update
+            setError(err.message || 'Failed to update.')
+            addToast(err.message || 'Failed to update', 'error')
         }
         setSaving(false)
     }
@@ -78,16 +112,13 @@ export default function DocumentDetail({ docId, onClose, onStatusChange, onDelet
         if (!confirm(`Delete "${doc?.title}"? This cannot be undone.`)) return
         setSaving(true)
         try {
-            const res = await fetch(`${API}/api/admin/documents/${docId}`, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: { 'x-csrf-token': getCsrf() }
-            })
-            if (!res.ok) { setError('Delete failed.'); setSaving(false); return }
+            await apiFetch(`/api/admin/documents/${docId}`, { method: 'DELETE' })
+            addToast(`"${doc?.title}" deleted`, 'success')
             onDelete && onDelete(docId)
             onClose()
-        } catch {
-            setError('Network error.')
+        } catch (err) {
+            setError(err.message || 'Delete failed.')
+            addToast(err.message || 'Delete failed', 'error')
         }
         setSaving(false)
     }
@@ -115,6 +146,9 @@ export default function DocumentDetail({ docId, onClose, onStatusChange, onDelet
 
                     {doc && !loading && (
                         <>
+                            {/* File preview */}
+                            <FilePreview doc={doc} />
+
                             {/* File info */}
                             <div className="detail-section">
                                 <div className="detail-section-title">File</div>
@@ -154,7 +188,7 @@ export default function DocumentDetail({ docId, onClose, onStatusChange, onDelet
                                 </div>
                             </div>
 
-                            {/* Owner/User */}
+                            {/* Owner */}
                             <div className="detail-section">
                                 <div className="detail-section-title">Owner</div>
                                 <div className="detail-grid">
@@ -232,22 +266,24 @@ export default function DocumentDetail({ docId, onClose, onStatusChange, onDelet
                             className="btn btn-success"
                             onClick={() => updateStatus('approved')}
                             disabled={saving || doc.status === 'approved'}
+                            title="Approve (A)"
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="20 6 9 17 4 12"/>
                             </svg>
-                            Approve
+                            Approve <kbd>A</kbd>
                         </button>
                         <button
                             id="btn-reject"
                             className="btn btn-danger"
                             onClick={() => updateStatus('rejected')}
                             disabled={saving || doc.status === 'rejected'}
+                            title="Reject (R)"
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
-                            Reject
+                            Reject <kbd>R</kbd>
                         </button>
                         <button
                             id="btn-archive"
@@ -278,6 +314,9 @@ export default function DocumentDetail({ docId, onClose, onStatusChange, onDelet
                             </svg>
                             Delete
                         </button>
+                        <p style={{ width: '100%', fontSize: '0.7rem', color: 'var(--muted)', marginTop: 4 }}>
+                            Keyboard: <kbd>Esc</kbd> close · <kbd>A</kbd> approve · <kbd>R</kbd> reject
+                        </p>
                     </div>
                 )}
             </div>

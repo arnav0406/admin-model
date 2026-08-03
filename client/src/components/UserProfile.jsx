@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import StatusBadge from './StatusBadge'
 import DocumentDetail from './DocumentDetail'
-
-const API = import.meta.env.VITE_API_URL || ''
+import apiFetch from '../lib/api'
 
 function fmtDate(d) {
     if (!d) return '—'
@@ -15,6 +14,8 @@ function fmtSize(bytes) {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
+
+const API = import.meta.env.VITE_API_URL || ''
 
 function Avatar({ name, src }) {
     if (src) {
@@ -38,11 +39,7 @@ export default function UserProfile() {
 
     useEffect(() => {
         setLoading(true)
-        fetch(`${API}/api/admin/users/${id}`, { credentials: 'include' })
-            .then(r => {
-                if (!r.ok) throw new Error()
-                return r.json()
-            })
+        apiFetch(`/api/admin/users/${id}`)
             .then(data => { setProfile(data); setLoading(false) })
             .catch(() => { setError('User not found.'); setLoading(false) })
     }, [id])
@@ -54,14 +51,18 @@ export default function UserProfile() {
 
     return (
         <div>
-            <button className="back-link" onClick={() => navigate('/users')}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-                </svg>
-                Back to Users
-            </button>
+            {/* Breadcrumb */}
+            <nav style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, fontSize: '0.82rem', color: 'var(--text2)' }}>
+                <Link to="/users" style={{ color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+                    </svg>
+                    Users &amp; Accounts
+                </Link>
+                <span>/</span>
+                <span style={{ color: 'var(--text)' }}>{account.display_name}</span>
+            </nav>
 
-            {/* Account header */}
             <div className="page-header">
                 <div>
                     <h1>{account.display_name}</h1>
@@ -140,7 +141,7 @@ export default function UserProfile() {
                             </thead>
                             <tbody>
                                 {documents.map(doc => (
-                                    <tr key={doc.id}>
+                                    <tr key={doc.id} onClick={() => setActiveDocId(doc.id)}>
                                         <td className="cell-title">
                                             <span className="cell-name">{doc.title}</span>
                                         </td>
@@ -151,7 +152,7 @@ export default function UserProfile() {
                                         <td><StatusBadge status={doc.status} /></td>
                                         <td className="cell-date">{fmtDate(doc.uploaded_at)}</td>
                                         <td className="cell-owner">{doc.reviewer_name || '—'}</td>
-                                        <td className="cell-actions">
+                                        <td className="cell-actions" onClick={e => e.stopPropagation()}>
                                             <button
                                                 id={`profile-view-doc-${doc.id}`}
                                                 className="btn btn-ghost"

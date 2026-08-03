@@ -39,6 +39,13 @@ export default function AdminLogin() {
 
     return (
         <div className="login-page">
+            {/* Animated orb background */}
+            <div className="login-orbs" aria-hidden="true">
+                <div className="login-orb login-orb-1" />
+                <div className="login-orb login-orb-2" />
+                <div className="login-orb login-orb-3" />
+            </div>
+
             <div className="login-theme-toggle-wrap">
                 <ThemeToggle showLabel />
             </div>
