@@ -5,16 +5,16 @@ import apiFetch from '../lib/api'
 const API = import.meta.env.VITE_API_URL || ''
 
 const actionConfig = {
-    admin_login:             { label: 'Admin Login',         color: 'var(--accent)' },
-    admin_logout:            { label: 'Admin Logout',        color: 'var(--muted)' },
-    document_approved:       { label: 'Approved',            color: 'var(--green)' },
-    document_rejected:       { label: 'Rejected',            color: 'var(--red)' },
-    document_archived:       { label: 'Archived',            color: 'var(--gray)' },
-    document_pending:        { label: 'Reverted to Pending', color: 'var(--yellow)' },
-    document_delete:         { label: 'Deleted',             color: 'var(--red)' },
-    document_bulk_delete:    { label: 'Bulk Delete',         color: 'var(--red)' },
-    document_bulk_approved:  { label: 'Bulk Approved',       color: 'var(--green)' },
-    document_bulk_rejected:  { label: 'Bulk Rejected',       color: 'var(--red)' },
+    admin_login: { label: 'Admin Login', color: 'var(--accent)' },
+    admin_logout: { label: 'Admin Logout', color: 'var(--muted)' },
+    document_approved: { label: 'Approved', color: 'var(--green)' },
+    document_rejected: { label: 'Rejected', color: 'var(--red)' },
+    document_archived: { label: 'Archived', color: 'var(--gray)' },
+    document_pending: { label: 'Reverted to Pending', color: 'var(--yellow)' },
+    document_delete: { label: 'Deleted', color: 'var(--red)' },
+    document_bulk_delete: { label: 'Bulk Delete', color: 'var(--red)' },
+    document_bulk_approved: { label: 'Bulk Approved', color: 'var(--green)' },
+    document_bulk_rejected: { label: 'Bulk Rejected', color: 'var(--red)' },
 }
 
 const fmtDate = (d) => {
@@ -60,11 +60,11 @@ function DonutChart({ segments, size = 120, strokeWidth = 18 }) {
     return (
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="donut-svg" style={{ transform: 'rotate(-90deg)' }}>
             {/* Background track */}
-            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--border)" strokeWidth={strokeWidth} />
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border)" strokeWidth={strokeWidth} />
             {arcs.map((arc, i) => arc.value > 0 && (
                 <circle
                     key={i}
-                    cx={size/2} cy={size/2} r={r}
+                    cx={size / 2} cy={size / 2} r={r}
                     fill="none"
                     stroke={arc.color}
                     strokeWidth={strokeWidth}
@@ -102,14 +102,14 @@ export default function Dashboard() {
     const maxCat = categories[0]?.count || 1
 
     // Count-up values
-    const total    = useCountUp(loading ? null : (stats.total ?? 0))
-    const pending  = useCountUp(loading ? null : (stats.pending ?? 0))
+    const total = useCountUp(loading ? null : (stats.total ?? 0))
+    const pending = useCountUp(loading ? null : (stats.pending ?? 0))
     const approved = useCountUp(loading ? null : (stats.approved ?? 0))
     const rejected = useCountUp(loading ? null : (stats.rejected ?? 0))
     const archived = useCountUp(loading ? null : (stats.archived ?? 0))
 
     const donutSegments = [
-        { label: 'Pending',  value: stats.pending  ?? 0, color: 'var(--yellow)' },
+        { label: 'Pending', value: stats.pending ?? 0, color: 'var(--yellow)' },
         { label: 'Approved', value: stats.approved ?? 0, color: 'var(--green)' },
         { label: 'Rejected', value: stats.rejected ?? 0, color: 'var(--red)' },
         { label: 'Archived', value: stats.archived ?? 0, color: 'var(--gray)' },
@@ -131,7 +131,7 @@ export default function Dashboard() {
                 <div className="pending-alert">
                     <span className="pending-alert-icon">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
                         </svg>
                     </span>
                     <span className="pending-alert-text">
@@ -145,8 +145,8 @@ export default function Dashboard() {
                 <div className="stat-card">
                     <div className="stat-icon icon-total">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
                         </svg>
                     </div>
                     <div>
@@ -157,7 +157,7 @@ export default function Dashboard() {
                 <div className="stat-card">
                     <div className="stat-icon icon-pending">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
                         </svg>
                     </div>
                     <div>
@@ -168,8 +168,8 @@ export default function Dashboard() {
                 <div className="stat-card">
                     <div className="stat-icon icon-approved">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                            <polyline points="22 4 12 14.01 9 11.01"/>
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
                         </svg>
                     </div>
                     <div>
@@ -180,8 +180,8 @@ export default function Dashboard() {
                 <div className="stat-card">
                     <div className="stat-icon icon-rejected">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
                         </svg>
                     </div>
                     <div>
@@ -192,8 +192,8 @@ export default function Dashboard() {
                 <div className="stat-card">
                     <div className="stat-icon icon-archived">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/>
-                            <line x1="10" y1="12" x2="14" y2="12"/>
+                            <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
+                            <line x1="10" y1="12" x2="14" y2="12" />
                         </svg>
                     </div>
                     <div>
@@ -243,31 +243,8 @@ export default function Dashboard() {
 
             <div className="dashboard-bottom">
                 <div className="section-card">
-                    <div className="section-card-header"><h2>Recent Activity</h2></div>
-                    {activity.length === 0 ? (
-                        <div className="empty-state"><p>No recent activity.</p></div>
-                    ) : (
-                        <div className="activity-list">
-                            {activity.map(log => {
-                                const cfg = actionConfig[log.action] || { label: log.action, color: 'var(--muted)' }
-                                return (
-                                    <div key={log.id} className="activity-item">
-                                        <div className="activity-dot" style={{ background: cfg.color }} />
-                                        <div className="activity-details">
-                                            <div className="activity-action">{cfg.label}</div>
-                                            <div className="activity-desc">{log.details || '—'}</div>
-                                            <div className="activity-time">{fmtDate(log.created_at)}</div>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    )}
-                </div>
-
-                <div className="section-card">
                     <div className="section-card-header">
-                        <h2>Recent Activity (Full)</h2>
+                        <h2>Recent Activity</h2>
                         <Link to="/audit" style={{ fontSize: '0.78rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
                             View All →
                         </Link>
