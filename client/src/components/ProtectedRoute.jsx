@@ -3,13 +3,7 @@ import { useNavigate } from 'react-router-dom'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-const dummyAdmin = { id: 1, username: 'Admin User', role: 'admin' }
-
 export default function ProtectedRoute({ children }) {
-    // TODO(security): Authentication bypass enabled for local development
-    return children(dummyAdmin)
-
-    /*
     const [admin, setAdmin] = useState(null)
     const [checking, setChecking] = useState(true)
     const navigate = useNavigate()
@@ -33,5 +27,4 @@ export default function ProtectedRoute({ children }) {
     }
 
     return admin ? children(admin) : null
-    */
 }

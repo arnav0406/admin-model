@@ -6,11 +6,6 @@ const isProduction = process.env.NODE_ENV === 'production';
 const COOKIE_NAME = isProduction ? '__Host-admin_token' : 'admin_token';
 
 const adminAuth = (req, res, next) => {
-    // TODO(security): Authentication check temporarily commented out for local development
-    req.adminId = 1;
-    return next();
-
-    /*
     const token = req.cookies[COOKIE_NAME];
     if (!token) {
         return res.status(401).json({ error: 'Admin authentication required.' });
@@ -23,7 +18,6 @@ const adminAuth = (req, res, next) => {
     } catch (err) {
         return res.status(401).json({ error: 'Invalid or expired admin session.' });
     }
-    */
 };
 
 const setAdminCookie = (res, adminId) => {
